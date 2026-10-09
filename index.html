@@ -1,0 +1,242 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RUSH AUCTION PRO</title>
+<style>
+body{margin:0;background:#090d16;color:white;font-family:Arial,sans-serif}
+header{text-align:center;padding:22px;background:#171e2c}
+h1,h2{color:#ffc247}
+nav{display:flex;gap:6px;overflow:auto;padding:12px;background:#111827}
+button{padding:10px;border:0;border-radius:7px;cursor:pointer;font-weight:bold;background:#ffc247;color:#111;margin:3px}
+input,select{padding:11px;margin:6px 0 12px;width:100%;box-sizing:border-box;background:#090d16;color:white;border:1px solid #46516a;border-radius:6px}
+main{max-width:900px;margin:auto;padding:14px}
+section{display:none}.active{display:block}
+.card{background:#171e2c;border:1px solid #303b50;border-radius:12px;padding:16px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.big{font-size:32px;color:#ffc247;font-weight:bold;margin:12px 0}
+.muted{color:#aab4c7;font-size:13px}
+.row{display:flex;gap:6px;flex-wrap:wrap}
+.row>*{flex:1}
+.danger{background:#c9364d;color:white}
+table{width:100%;border-collapse:collapse}
+td,th{text-align:left;padding:9px;border-bottom:1px solid #344056;font-size:13px}
+.table{overflow:auto}
+</style>
+</head>
+<body>
+<header>
+<h1>🏏 RUSH AUCTION PRO</h1>
+<div id="heading">Real Cricket Tournament Auction</div>
+</header>
+<nav>
+<button onclick="show('setup')">Setup</button>
+<button onclick="show('auction')">Live Auction</button>
+<button onclick="show('teams')">Teams & Squads</button>
+<button onclick="show('players')">Players</button>
+<button onclick="show('history')">History</button>
+<button onclick="show('reset')">Reset</button>
+</nav>
+<main>
+<p id="msg" class="muted"></p>
+
+<section id="setup" class="active">
+<h2>Tournament Setup</h2>
+<div class="card">
+<label>Tournament name</label><input id="tn" placeholder="Tournament name">
+<button onclick="saveName()">Save Tournament</button>
+</div>
+<div class="card">
+<h3>Add Team</h3>
+<input id="teamName" placeholder="Team name">
+<input id="budget" type="number" placeholder="Team budget (₹)">
+<button onclick="addTeam()">Add Team</button>
+</div>
+<div class="card">
+<h3>Register Player</h3>
+<input id="playerName" placeholder="Player name">
+<select id="role"><option>Batter</option><option>Bowler</option><option>All-rounder</option><option>Wicket-keeper</option></select>
+<input id="base" type="number" placeholder="Base price (₹)">
+<button onclick="addPlayer()">Add Player</button>
+</div>
+</section>
+
+<section id="auction">
+<h2>Live Auction</h2>
+<div class="card">
+<div class="muted">CURRENT PLAYER</div>
+<div id="current" class="big">Select a player</div>
+<div id="playerRole" class="muted"></div>
+<p>Base price: <b id="basePrice">—</b></p>
+<p>Highest bid:</p><div id="bid" class="big">₹0</div>
+<p id="bidder">No bids yet</p>
+<label>Select bidding team</label><select id="bidTeam"></select>
+<div class="row">
+<button onclick="placeBid()">Place / Raise Bid</button>
+<button onclick="sell()">SOLD</button>
+<button class="danger" onclick="unsold()">UNSOLD</button>
+</div>
+<hr>
+<label>Choose player</label><select id="picker" onchange="choose(this.value)"></select>
+<button onclick="nextPlayer()">Next Available Player</button>
+<button onclick="clearBid()">Reset Current Bid</button>
+</div>
+</section>
+
+<section id="teams">
+<h2>Teams & Squads</h2><div id="teamList" class="grid"></div>
+</section>
+
+<section id="players">
+<h2>Player List</h2>
+<div class="card table"><table><thead><tr><th>Name</th><th>Role</th><th>Base</th><th>Status</th><th>Action</th></tr></thead><tbody id="playerList"></tbody></table></div>
+</section>
+
+<section id="history">
+<h2>Auction History</h2>
+<button onclick="exportCSV()">Export CSV</button>
+<div class="card table"><table><thead><tr><th>Player</th><th>Team</th><th>Price</th><th>Status</th></tr></thead><tbody id="historyList"></tbody></table></div>
+</section>
+
+<section id="reset">
+<h2>Reset Options</h2>
+<div class="card">
+<p>Clear the current player's bid.</p><button onclick="clearBid()">Reset Current Bid</button>
+<hr>
+<p>Restore team budgets and return players to the auction pool.</p><button class="danger" onclick="resetResults()">Reset Auction Results</button>
+<hr>
+<p>Delete the entire tournament, teams, players and history.</p><button class="danger" onclick="resetAll()">Reset Entire Tournament</button>
+</div>
+</section>
+</main>
+
+<script>
+const KEY="rushAuction";
+const fresh=()=>({name:"",teams:[],players:[],history:[],current:null,bid:0,team:null});
+let d;
+try{d=JSON.parse(localStorage.getItem(KEY))||fresh()}catch(e){d=fresh()}
+const $=id=>document.getElementById(id);
+const cash=n=>"₹"+Number(n||0).toLocaleString("en-IN");
+const id=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const say=s=>$("msg").textContent=s;
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function save(){localStorage.setItem(KEY,JSON.stringify(d));render()}
+function show(s){document.querySelectorAll("main section").forEach(x=>x.classList.remove("active"));$(s).classList.add("active");render()}
+function pcur(){return d.players.find(p=>p.id===d.current)}
+function tcur(){return d.teams.find(t=>t.id===d.team)}
+function available(){return d.players.filter(p=>p.status==="Available")}
+function saveName(){d.name=$("tn").value.trim();if(!d.name)return say("Enter tournament name");save();say("Tournament saved")}
+function addTeam(){
+let name=$("teamName").value.trim(),budget=Number($("budget").value);
+if(!name||!Number.isFinite(budget)||budget<=0)return say("Enter team name and budget");
+if(d.teams.some(t=>t.name.toLowerCase()===name.toLowerCase()))return say("Team already exists");
+d.teams.push({id:id(),name,budget,left:budget,players:[]});
+$("teamName").value="";$("budget").value="";save();say("Team added");
+}
+function addPlayer(){
+let name=$("playerName").value.trim(),base=Number($("base").value);
+if(!name||!Number.isFinite(base)||base<=0)return say("Enter player name and base price");
+d.players.push({id:id(),name,role:$("role").value,base,status:"Available",team:null,price:0});
+$("playerName").value="";$("base").value="";save();say("Player registered");
+}
+function choose(pid){
+let p=d.players.find(x=>x.id===pid);
+if(!p)return;
+if(p.status!=="Available")return say("Player already processed");
+d.current=p.id;d.bid=0;d.team=null;save();
+}
+function placeBid(){
+let p=pcur(),t=d.teams.find(x=>x.id===$("bidTeam").value);
+if(!p||p.status!=="Available")return say("Choose an available player");
+if(!t)return say("Add a team first");
+let minimum=d.bid?d.bid+1000:p.base;
+let amount=Number(prompt("Enter bid (minimum "+cash(minimum)+")",minimum));
+if(!Number.isFinite(amount)||amount<minimum)return say("Bid below minimum");
+if(amount>t.left)return say("Team budget is insufficient");
+d.bid=amount;d.team=t.id;save();say("Highest bid: "+t.name);
+}
+function sell(){
+let p=pcur(),t=tcur();if(!p||p.status!=="Available")return say("Choose an available player");
+if(!t)return say("Place a bid first");
+let price=d.bid||p.base;
+if(price>t.left)return say("Insufficient team budget");
+if(!confirm("Sell "+p.name+" to "+t.name+" for "+cash(price)+"?"))return;
+p.status="Sold";p.team=t.id;p.price=price;t.left-=price;t.players.push(p.id);
+d.history.push({player:p.name,team:t.name,price,status:"SOLD"});
+d.current=null;d.bid=0;d.team=null;save();say("Player sold successfully");
+}
+function unsold(){
+let p=pcur();if(!p||p.status!=="Available")return say("Choose an available player");
+if(!confirm("Mark "+p.name+" unsold?"))return;
+p.status="Unsold";d.history.push({player:p.name,team:"—",price:0,status:"UNSOLD"});
+d.current=null;d.bid=0;d.team=null;save();
+}
+function nextPlayer(){
+let list=available();if(!list.length)return say("No available players");
+let i=list.findIndex(p=>p.id===d.current);
+choose(list[(i+1+list.length)%list.length].id);
+}
+function clearBid(){d.bid=0;d.team=null;save();say("Current bid reset")}
+function resetResults(){
+if(!confirm("Reset all sales and restore team budgets?"))return;
+d.teams.forEach(t=>{t.left=t.budget;t.players=[]});
+d.players.forEach(p=>{p.status="Available";p.team=null;p.price=0});
+d.history=[];d.current=null;d.bid=0;d.team=null;save();say("Auction results reset");
+}
+function resetAll(){
+if(!confirm("Delete all tournament data? Export a backup first if needed."))return;
+d=fresh();save();say("Tournament reset");
+}
+function exportCSV(){
+let rows=[["Player","Team","Price","Status"],...d.history.map(h=>[h.player,h.team,h.price,h.status])];
+let csv=rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\r\n");
+let a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv"}));a.download="rush-auction-history.csv";a.click();
+}
+function render(){
+$("heading").textContent=d.name||"Real Cricket Tournament Auction";
+if($("tn").value!==d.name)$("tn").value=d.name;
+let p=pcur();
+$("current").textContent=p?p.name:"Select a player";
+$("playerRole").textContent=p?p.role:"";
+$("basePrice").textContent=p?cash(p.base):"—";
+$("bid").textContent=cash(d.bid);
+$("bidder").textContent=d.team?"Highest bidder: "+(tcur()?.name||""):"No bids yet";
+$("bidTeam").innerHTML=d.teams.map(t=>'<option value="'+t.id+'">'+esc(t.name)+" — "+cash(t.left)+'</option>').join("");
+if(d.team)$("bidTeam").value=d.team;
+$("picker").innerHTML='<option value="">Choose player</option>'+available().map(p=>'<option value="'+p.id+'" '+(p.id===d.current?"selected":"")+'>'+esc(p.name)+" — "+cash(p.base)+'</option>').join("");
+$("playerList").innerHTML=d.players.map(p=>'<tr><td>'+esc(p.name)+'</td><td>'+esc(p.role)+'</td><td>'+cash(p.base)+'</td><td>'+p.status+'</td><td><button onclick="editPlayer(\''+p.id+'\')">Edit</button><button class="danger" onclick="deletePlayer(\''+p.id+'\')">Delete</button><button onclick="choose(\''+p.id+'\')">Auction</button></td></tr>').join("");
+$("teamList").innerHTML=d.teams.map(t=>'<div class="card"><h3>'+esc(t.name)+'</h3><p>Budget: '+cash(t.budget)+'</p><div class="big">'+cash(t.left)+'</div><p>Remaining purse</p><hr><b>Squad</b>'+(t.players.map(pid=>d.players.find(p=>p.id===pid)).filter(Boolean).map(p=>'<p>'+esc(p.name)+' — '+cash(p.price)+'</p>').join("")||'<p class="muted">No players purchased</p>')+'<button onclick="editTeam(\''+t.id+'\')">Edit</button><button class="danger" onclick="deleteTeam(\''+t.id+'\')">Delete</button></div>').join("");
+$("historyList").innerHTML=d.history.slice().reverse().map(h=>'<tr><td>'+esc(h.player)+'</td><td>'+esc(h.team)+'</td><td>'+cash(h.price)+'</td><td>'+h.status+'</td></tr>').join("");
+}
+function editPlayer(pid){
+let p=d.players.find(x=>x.id===pid);if(!p)return;
+if(p.status==="Sold")return say("Reset auction results before editing a sold player");
+let name=prompt("Player name",p.name);if(name===null)return;
+let base=Number(prompt("Base price",p.base));
+if(!name.trim()||!Number.isFinite(base)||base<=0)return say("Invalid details");
+p.name=name.trim();p.base=base;save();
+}
+function deletePlayer(pid){
+let p=d.players.find(x=>x.id===pid);if(!p)return;
+if(p.status==="Sold")return say("Reset auction results before deleting a sold player");
+if(confirm("Delete "+p.name+"?")){d.players=d.players.filter(x=>x.id!==pid);if(d.current===pid)d.current=null;save()}
+}
+function editTeam(tid){
+let t=d.teams.find(x=>x.id===tid);if(!t)return;
+if(t.players.length)return say("Reset results before editing this team's budget");
+let name=prompt("Team name",t.name);if(name===null)return;
+let budget=Number(prompt("Team budget",t.budget));
+if(!name.trim()||!Number.isFinite(budget)||budget<=0)return say("Invalid details");
+t.name=name.trim();t.budget=budget;t.left=budget;save();
+}
+function deleteTeam(tid){
+let t=d.teams.find(x=>x.id===tid);if(!t)return;
+if(t.players.length)return say("Reset auction results before deleting this team");
+if(confirm("Delete "+t.name+"?")){d.teams=d.teams.filter(x=>x.id!==tid);if(d.team===tid){d.team=null;d.bid=0}save()}
+}
+render();
+</script>
+</body>
+</html>
